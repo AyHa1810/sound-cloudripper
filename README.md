@@ -39,6 +39,8 @@ this is easy to fix tho, i just need to do it :')
 ---
 - -v   |  prompts positive results in real time
 - -vv |  prompts positive and negative results in real time
+---
+- -c | specify the soundcloud client id to ignore public/deleted tracks
 
 ---
 ### Usage

@@ -38,7 +38,9 @@ async def main(num_runs, threads):
                     #Regex to match private tokens
                     match = re.search(r'/s-[a-zA-Z0-9]{11}', url_final)
 
-                    if match:
+                    private_track = await is_private_track(session,url_final) if client_id else True
+
+                    if match and private_track:
                         if(args.verbose or args.very_verbose):
                             print(Fore.GREEN + "[+] Valid URL: ", url)
                         total_requests += 1
@@ -92,11 +94,28 @@ def xml_export(links):
     ET.ElementTree(data).write("output.xml", encoding="utf-8", xml_declaration=True)
     print(Fore.GREEN + "\n[+] Done !\n")
 
+async def is_private_track(session, url):
+    SOUNDCLOUD_API_BASE_URL = 'https://api-v2.soundcloud.com'
+    async with session.get(f'{SOUNDCLOUD_API_BASE_URL}/resolve?client_id={client_id}&url={url}') as response:
+        if response.status == 401:
+            return True
+
+        track_data = await response.json()
+        
+        if not track_data:
+            return False
+        
+        if track_data.get('sharing') == 'private':
+            return True
+        else:
+            return False
 
 
 
 #ENTRY POINT
 if __name__ == "__main__":
+    client_id_guide_link = "https://github.com/zackradisic/node-soundcloud-downloader?tab=readme-ov-file#client-id"
+
     print(Fore.LIGHTGREEN_EX + "\n------------------------------------------")
     print(Fore.LIGHTGREEN_EX + "/ / / / / " + Fore.LIGHTYELLOW_EX + "C L O U D R I P P E R" + Fore.LIGHTGREEN_EX + " / / / / /")
     print(Fore.LIGHTGREEN_EX + "------------------------------------------" + Fore.RESET)
@@ -109,11 +128,22 @@ if __name__ == "__main__":
     parser.add_argument('-x', '--xml_export', action='store_true', help="export found tracks in a XML file")
     parser.add_argument('-v', '--verbose', action='store_true', help="verbose mode, show more informations")
     parser.add_argument('-vv', '--very_verbose', action='store_true', help="very verbose mode, show ALL informations")
+    parser.add_argument('-c', '--client_id', help="soundcloud api key needed for checking " +
+                        f"if track is not deleted and private. {client_id_guide_link}")
     #todo : -? <-> bruteforces private token
     #todo : -? <-> proxylist support ?
     #--------------------------------------------------------------------------------------------------------
     # take arguments in 'args'
     args = parser.parse_args()
+
+    client_id = args.client_id
+    if not client_id:
+        print("\nfor more accurate results, this tool needs a soundcloud client id. " +
+              "without it, some found tracks can be deleted or not private\n" +
+              Fore.LIGHTGREEN_EX + client_id_guide_link + Fore.RESET + " <- how to get it\n")
+    
+        client_id = input("[?] enter the client id " +
+                        f"(press {Fore.LIGHTYELLOW_EX}ENTER{Fore.RESET} to skip): ")
     
     ###
     if(args.requests is not None):
@@ -122,10 +152,10 @@ if __name__ == "__main__":
             print(Fore.LIGHTGREEN_EX + "\n[!] starting cloudripper for exactly ", runs, " requests...")
             asyncio.run(main(args.requests, args.threads))
         else:
-            print(Fore.LIGHTGREEN_EX + "[!] starting cloudripper for exactly ", args.requests , " requests...")
+            print(Fore.LIGHTGREEN_EX + "\n[!] starting cloudripper for exactly ", args.requests , " requests...")
             asyncio.run(main(args.requests, 1))
     else:
-        print(Fore.YELLOW + "[?] no requests number set")
+        print(Fore.YELLOW + "\n[?] no requests number set")
         print(Fore.LIGHTGREEN_EX + "[!] starting cloudripper with the default params (25 requests, verbose)")
         args.verbose = True
         if(args.threads is None):
