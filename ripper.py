@@ -7,6 +7,7 @@ import aiohttp
 import re
 import os
 from colorama import Fore
+import json
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse, urlunparse
 
@@ -66,6 +67,10 @@ async def main(num_runs, threads):
     #export to xml if xml switch is true
     if (args.xml_export):
         xml_export(matched_urls)
+    
+    #export to json if json switch is true
+    if (args.json_export):
+        json_export(matched_urls)
 
 
 #=======================additional functions=====================================================================
@@ -93,6 +98,29 @@ def xml_export(links):
         user_element.append(link_element)
     ET.ElementTree(data).write("output.xml", encoding="utf-8", xml_declaration=True)
     print(Fore.GREEN + "\n[+] Done !\n")
+
+def json_export(links):
+    print(Fore.MAGENTA + "\n[+] JSON export...")
+    
+    data = {}
+    
+    if os.path.exists("output.json"):
+        with open("output.json", "r") as f:
+            data = json.load(f)
+    
+    for link in links:
+        random_name = link.split("/")[-3]
+        
+        if random_name not in data:
+            data[random_name] = []
+        
+        data[random_name].append(link)
+    
+    with open("output.json", "w") as f:
+        json.dump(data, f, indent=4)
+    
+    print(Fore.GREEN + "\n[+] Done !\n")
+
 
 async def is_private_track(session, url):
     SOUNDCLOUD_API_BASE_URL = 'https://api-v2.soundcloud.com'
@@ -126,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--requests', type=int, help="number of base requests")
     parser.add_argument('-t', '--threads', type=int, help="number of simultaneous threads (multiplies the nbr of requests)")
     parser.add_argument('-x', '--xml_export', action='store_true', help="export found tracks in a XML file")
+    parser.add_argument('-j', '--json_export', action='store_true', help="export found tracks in a JSON file")
     parser.add_argument('-v', '--verbose', action='store_true', help="verbose mode, show more informations")
     parser.add_argument('-vv', '--very_verbose', action='store_true', help="very verbose mode, show ALL informations")
     parser.add_argument('-c', '--client_id', help="soundcloud api key needed for checking " +

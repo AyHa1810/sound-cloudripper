@@ -36,6 +36,7 @@ this is easy to fix tho, i just need to do it :')
 - -t  |  number of simultaneous threads **(multiplies the number of requests)**
 ---
 - -x  |  exports the positive results in a xml file (output.xml), *and updates it if it already exists.*
+- -j  |  exports the positive results in a json file (output.json), *and updates it if it already exists.*
 ---
 - -v   |  prompts positive results in real time
 - -vv |  prompts positive and negative results in real time
