@@ -23,10 +23,7 @@ this is easy to fix tho, i just need to do it :')
 ---
 
 ### Dependencies
-- aiohttp
-- asyncio
-- argparse
-- colorama
+use `pip install -r requirements.txt` to fulfill these
 
 ---
 ### CLI Arguments
