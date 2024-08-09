@@ -88,7 +88,7 @@ async def main(num_runs, threads):
                             print(Fore.LIGHTYELLOW_EX + "[-] URL already checked: ", url)
                             break
                         if response.status == 429:
-                            print(Fore.LIGHTGREEN_EX + "[!] API getting rate limited, waiting for", str() + "secs")
+                            print(Fore.LIGHTGREEN_EX + "[!] API getting rate limited, waiting for", str(rateTimes[rate]) + "secs")
                             sleep(rateTimes[rate])
                             if (rate < 4):
                                 rate+=1
