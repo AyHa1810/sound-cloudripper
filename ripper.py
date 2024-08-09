@@ -3,6 +3,9 @@ import argparse
 import asyncio
 import random
 import string
+import signal
+import sys
+import sqlite3
 import aiohttp
 import re
 import os
@@ -13,14 +16,58 @@ from urllib.parse import urlparse, urlunparse
 
 #=====================CORE=====================================>>
 #==============================================================>>
+# Save whatever has been parsed till KeyboardInterrupt or any error
+def errorsave(*args):
+    argums = parser.parse_args()
+    print(Fore.LIGHTGREEN_EX + 'Saving whatever is done!')
+    con.commit()
+    #export to xml if xml switch is true
+    if (argums.xml_export):
+        xml_export(matched_urls)
+    
+    #export to json if json switch is true
+    if (argums.json_export):
+        json_export(matched_urls)
+    print("Stats:")
+    print(f"Total requests made: {total_requests}; Total valid URLs: {len(matched_urls)}" + Fore.RESET)
+
+def signal_handler(*args):
+    print(Fore.RED + 'You pressed Ctrl+C!')
+    errorsave()
+    sys.exit(0)
+    
+signal.signal(signal.SIGINT, signal_handler)
+
+# Setup sqlite3 db for saving and querying links that have been already checked
+con = sqlite3.connect("checked.sqlite3")
+cur = con.cursor()
+cur.execute("CREATE TABLE IF NOT EXISTS sc_checked (urls VARCHAR(64) NOT NULL UNIQUE)")
+
 async def fetch_url(session, url):
-    async with session.get(url, allow_redirects=False) as response:
-        return response, await response.text()
+    retry = 0
+    while retry < 5:
+        try:
+            async with session.get(url, allow_redirects=False) as response:
+                return response, await response.text()
+        except Exception as e:
+            if (retry < 5):
+                print(Fore.LIGHTGREEN_EX + '[!] Request failed with following error:', e)
+                print(Fore.LIGHTGREEN_EX + '[!] Retrying:', url)
+                retry+=1
+            else:
+                print(Fore.RED + "[-] Request failed, skipping: ", url)
+                return None
+    
 
 async def main(num_runs, threads):
+    global total_requests
+    global matched_urls
+    
+    # set rate time ranges
+    rateTimes = [ 30, 60, 15*60, 30*60, 60*60 ]
+
     #keep track of total requests
     total_requests = 0
-
     matched_urls = []
     print(Fore.LIGHTGREEN_EX + "\n[!] Harvesting private tracks...\n\n" + Fore.RESET)
     for _ in range(num_runs):
@@ -32,32 +79,60 @@ async def main(num_runs, threads):
             responses = await asyncio.gather(*tasks)
 
             for url, (response, text) in zip(urls, responses):
-                #intercept redirection code, extract Location URL
-                if response.status == 302:
-                    full_url = response.headers.get('Location', '')
-                    url_final = urlunparse(urlparse(full_url)._replace(query=''))
-                    #Regex to match private tokens
-                    match = re.search(r'/s-[a-zA-Z0-9]{11}', url_final)
+                retry = 0
+                rate = 0
+                while retry < 5:
+                    try:
+                        #intercept redirection code, extract Location URL
+                        if cur.execute("SELECT 1 FROM sc_checked WHERE urls='" + url + "'").fetchone():
+                            print(Fore.LIGHTYELLOW_EX + "[-] URL already checked: ", url)
+                            break
+                        if response.status == 429:
+                            print(Fore.LIGHTGREEN_EX + "[!] API getting rate limited, waiting for", str() + "secs")
+                            sleep(rateTimes[rate])
+                            if (rate < 4):
+                                rate+=1
+                            continue
+                        if response.status == 302:
+                            full_url = response.headers.get('Location', '')
+                            url_final = urlunparse(urlparse(full_url)._replace(query=''))
+                            #Regex to match private tokens
+                            match = re.search(r'/s-[a-zA-Z0-9]{11}', url_final)
 
-                    private_track = await is_private_track(session,url_final) if client_id else True
+                            private_track = await is_private_track(session,url_final) if client_id else True
 
-                    if match and private_track:
-                        if(args.verbose or args.very_verbose):
-                            print(Fore.GREEN + "[+] Valid URL: ", url)
-                        total_requests += 1
-                        matched_urls.append(url_final)
-                    else:
-                        if(args.very_verbose):
-                            print(Fore.RED + "[-] Invalid URL: ", url)
-                        total_requests += 1
-                else:
-                    if(args.very_verbose):
-                        print(Fore.RED + "[-] Invalid URL: ", url)
-                    total_requests += 1
+                            if match and private_track:
+                                if(args.verbose or args.very_verbose):
+                                    print(Fore.GREEN + "[+] Valid URL: ", url)
+                                if (args.text_file):
+                                    fileAppend(url_final, "output.txt")
+                                total_requests += 1
+                                matched_urls.append(url_final)
+                            else:
+                                if(args.very_verbose):
+                                    print(Fore.RED + "[-] Invalid URL: ", url)
+                                total_requests += 1
+                        else:
+                            if(args.very_verbose):
+                                print(Fore.RED + "[-] Invalid URL: ", url)
+                            total_requests += 1
+                        #fileAppend(url, "checked.txt")
+                        cur.execute("INSERT INTO sc_checked (urls) VALUES ('" + url + "')")
+                        break
+                    except Exception as e:
+                        if (retry < 5):
+                            print(Fore.LIGHTGREEN_EX + '[!] Request failed with following error:', e)
+                            print(Fore.LIGHTGREEN_EX + '[!] Retrying:', url)
+                            retry+=1
+                            continue
+                        else:
+                            print(Fore.RED + "[-] Request failed, skipping: ", url)
+                            break
     #============================================================================================
     #===================ON PROGRAM FINISH========================================================
 
-    print(Fore.YELLOW + "\n[!] Finished !", len(matched_urls) ,"private tracks found on" , total_requests ,"requests <3")
+    print(Fore.YELLOW + "\n[!] Finished !", len(matched_urls), "private tracks found on", total_requests, "requests <3")
+    con.commit()
 
     #END OF MAIN SECTION ===============================================================================
 
@@ -74,6 +149,10 @@ async def main(num_runs, threads):
 
 
 #=======================additional functions=====================================================================
+def fileAppend(line, file):
+    with open(file, "a") as myfile:
+        myfile.write(line + "\n")
+
 def xml_export(links):
     print(Fore.MAGENTA + "\n[+] XML export...")
     data = ET.Element("data")
@@ -155,6 +234,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--threads', type=int, help="number of simultaneous threads (multiplies the nbr of requests)")
     parser.add_argument('-x', '--xml_export', action='store_true', help="export found tracks in a XML file")
     parser.add_argument('-j', '--json_export', action='store_true', help="export found tracks in a JSON file")
+    parser.add_argument('-e', '--text_file', action='store_true', help="append found tracks to a given TEXT file")
     parser.add_argument('-v', '--verbose', action='store_true', help="verbose mode, show more informations")
     parser.add_argument('-vv', '--very_verbose', action='store_true', help="very verbose mode, show ALL informations")
     parser.add_argument('-c', '--client_id', help="soundcloud api key needed for checking " +
