@@ -232,7 +232,7 @@ async def is_private_track(session, url):
             if response.status == 401:
                 return True
 
-            track_data = await response.json()
+            track_data = await response.json(content_type=None)
 
             if not track_data:
                 return False
