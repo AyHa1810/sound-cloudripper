@@ -68,6 +68,7 @@ async def fetch_url(session, url):
 async def main(num_runs, threads, filter = ""):
     global total_requests
     global matched_urls
+    global rateTimes
     initdb("checked.sqlite3")
 
     # set rate time ranges
@@ -148,7 +149,7 @@ async def main(num_runs, threads, filter = ""):
     print(Fore.YELLOW + "\n[!] Finished !", len(matched_urls), "private tracks found on", total_requests, "requests <3")
     con.commit()
 
-    #END OF MAIN SECTION ===============================================================================
+    #END OF MAIN SECTION ========================================================================
 
     if args.requests is None:
         print(Fore.LIGHTYELLOW_EX + "[?] use 'ripper.py -h' or '--help' to view commands")
@@ -162,7 +163,7 @@ async def main(num_runs, threads, filter = ""):
         json_export(matched_urls)
 
 
-#=======================additional functions=====================================================================
+#=======================additional functions=====================================================
 def fileAppend(line, file):
     with open(file, "a") as myfile:
         myfile.write(line + "\n")
@@ -217,19 +218,29 @@ def json_export(links):
 
 async def is_private_track(session, url):
     SOUNDCLOUD_API_BASE_URL = 'https://api-v2.soundcloud.com'
-    async with session.get(f'{SOUNDCLOUD_API_BASE_URL}/resolve?client_id={client_id}&url={url}') as response:
-        if response.status == 401:
-            return True
+    retry = 0
+    rate = 0
+    while retry < 5:
+        async with session.get(f'{SOUNDCLOUD_API_BASE_URL}/resolve?client_id={client_id}&url={url}') as response:
+            if response.status == 429:
+                print(Fore.LIGHTGREEN_EX + "[!] API getting rate limited, waiting for", str(rateTimes[rate]) + "secs")
+                sleep(rateTimes[rate])
+                if (rate < 4):
+                    rate+=1
+                continue
 
-        track_data = await response.json()
+            if response.status == 401:
+                return True
 
-        if not track_data:
-            return False
+            track_data = await response.json()
 
-        if track_data.get('sharing') == 'private':
-            return True
-        else:
-            return False
+            if not track_data:
+                return False
+
+            if track_data.get('sharing') == 'private':
+                return True
+            else:
+                return False
 
 
 
